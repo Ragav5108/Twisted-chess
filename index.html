@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twisted Chess</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #FFF8E1; --ink: #2c3e50; --btn: #FFB74D; --btn-shadow: #E65100;
+            --online: #6C5CE7; --online-shadow: #4834d4;
+            --white-sq: #f0d9b5; --black-sq: #b58863;
+            --highlight: #f1c40f; --valid: rgba(46, 204, 113, 0.7);
+            --capture: rgba(231, 76, 60, 0.5);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: var(--bg);
+            background-image: radial-gradient(#d7ccc8 1px, transparent 1px);
+            background-size: 20px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--ink);
+            padding: 10px;
+        }
+        .screen { 
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            width: 100%; 
+            max-width: 450px; 
+            animation: fadeIn 0.3s ease;
+        }
+        .screen.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .card {
+            background: white;
+            border: 4px solid var(--ink);
+            border-radius: 20px;
+            box-shadow: 8px 8px 0 var(--ink);
+            padding: 20px;
+            width: 100%;
+            text-align: center;
+        }        h1 { font-size: 1.8rem; margin-bottom: 15px; text-transform: uppercase; }
+        h2 { font-size: 1.4rem; margin: 10px 0; }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 3px solid var(--ink);
+            border-radius: 15px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            font-weight: 600;
+            background: var(--btn);
+            color: white;
+            box-shadow: 5px 5px 0 var(--ink);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: translate(2px, 2px); box-shadow: 3px 3px 0 var(--ink); }
+        .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-online { background: var(--online); box-shadow: 5px 5px 0 var(--online-shadow); }
+        .btn-sec { background: #A5D6A7; }
+        
+        .input-row { display: flex; gap: 8px; margin: 15px 0; }
+        .input-row input {
+            flex: 1; padding: 10px; border: 3px solid var(--ink);
+            border-radius: 10px; font-family: inherit; font-size: 1rem;
+        }
+        
+        .rules {
+            background: #e8f4fd; border: 2px dashed var(--ink);
+            border-radius: 10px; padding: 12px; margin: 10px 0;
+            font-size: 0.9rem; text-align: left;
+        }
+        .rules b { color: var(--online); }
+        
+        #board {
+            display: grid; grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 320px; height: 320px;
+            border: 4px solid var(--ink); border-radius: 8px;
+            margin: 10px 0; background: white;
+        }
+        .sq {
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; cursor: pointer; position: relative;
+        }
+        .sq.w { background: var(--white-sq); }
+        .sq.b { background: var(--black-sq); }        .sq.sel { background: var(--highlight) !important; }
+        .sq.valid::after {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            background: var(--valid); border-radius: 50%;
+            border: 2px solid var(--ink);
+        }
+        .sq.cap { background: var(--capture) !important; }
+        .sq.check { background: rgba(231, 76, 60, 0.4) !important; animation: pulse 0.3s; }
+        @keyframes pulse { 50% { transform: scale(1.05); } }
+        
+        .piece { font-size: 30px; line-height: 1; }
+        .piece.w { color: #fff; text-shadow: 0 0 2px #000, 1px 1px 2px #000; }
+        .piece.b { color: #000; }
+        
+        #status {
+            font-size: 1.2rem; font-weight: 600; padding: 8px 16px;
+            background: #ffeaa7; border: 2px solid var(--ink);
+            border-radius: 20px; margin: 10px 0;
+        }
+        #status.check { background: #ff7675; color: white; }
+        
+        .room-id {
+            background: #fff; border: 2px dashed var(--ink);
+            border-radius: 10px; padding: 10px; font-family: monospace;
+            font-size: 1.1rem; margin: 10px 0; word-break: break-all;
+        }
+        
+        .toast {
+            position: fixed; bottom: 20px; left: 50%;
+            transform: translateX(-50%); background: var(--ink);
+            color: white; padding: 10px 20px; border-radius: 50px;
+            font-weight: 600; opacity: 0; transition: opacity 0.3s;
+            pointer-events: none; z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+        
+        .modal {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%; background: rgba(44,62,80,0.9);
+            justify-content: center; align-items: center;
+            z-index: 100; padding: 20px;
+        }
+        .modal.active { display: flex; }
+        .modal .card { max-width: 400px; animation: pop 0.3s ease; }
+        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .loader {
+            display: none; border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--online); border-radius: 50%;
+            width: 35px; height: 35px; animation: spin 1s linear infinite;            margin: 15px auto;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        
+        /* DEBUG PANEL */
+        #debug {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #1a1a2e; color: #0f0; font-family: monospace;
+            font-size: 11px; padding: 5px 10px; max-height: 100px;
+            overflow-y: auto; display: none; z-index: 2000;
+        }
+        #debug.show { display: block; }
+        #debugToggle {
+            position: fixed; bottom: 5px; right: 5px;
+            background: #333; color: white; border: none;
+            padding: 3px 8px; font-size: 10px; cursor: pointer;
+            border-radius: 3px; z-index: 2001;
+        }
+        
+        @media (max-width: 400px) {
+            #board { width: 280px; height: 280px; }
+            .sq { font-size: 24px; } .piece { font-size: 26px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast" class="toast">Copied!</div>
+<button id="debugToggle" onclick="toggleDebug()">🐛 Debug</button>
+<div id="debug"></div>
+
+<!-- HOME SCREEN -->
+<div id="home" class="screen active">
+    <div class="card">
+        <h1>♟️ Twisted Chess</h1>
+        <div class="rules">
+            <b>🔄 The Twist:</b><br>
+            👑 King → moves like Queen (any distance)<br>
+            ♛ Queen → moves like King (1 square)<br>
+            🎯 Win by checkmating the King!
+        </div>
+        <button class="btn" id="btnLocal">👥 Local 1v1</button>
+        <button class="btn btn-online" id="btnOnline">🌍 Online 1v1</button>
+        <button class="btn btn-sec" id="btnRules">📜 Rules</button>
+    </div>
+</div>
+
+<!-- LOBBY SCREEN -->
+<div id="lobby" class="screen">
+    <div class="card">        <h2>🌍 Online Play</h2>
+        
+        <h3 style="margin:15px 0 5px">🏠 Create Room</h3>
+        <button class="btn btn-online" id="btnCreate">✨ Create</button>
+        <div id="created" style="display:none">
+            <p>Share this ID:</p>
+            <div class="room-id" id="roomId">...</div>
+            <button class="btn" id="btnCopy">📋 Copy ID</button>
+            <button class="btn btn-sec" id="btnShare">📤 Share</button>
+            <p id="hostStatus" style="font-size:0.9rem;color:#666;margin-top:8px">Waiting...</p>
+        </div>
+        
+        <div style="margin:20px 0;border-bottom:2px solid #eee"></div>
+        
+        <h3 style="margin:15px 0 5px">🔑 Join Room</h3>
+        <div class="input-row">
+            <input type="text" id="joinInput" placeholder="Paste Room ID">
+            <button class="btn btn-online" id="btnJoin" style="width:auto;padding:10px 15px">Join</button>
+        </div>
+        <p id="joinStatus" style="font-size:0.9rem;color:#666"></p>
+        
+        <div class="loader" id="loader"></div>
+        
+        <button class="btn btn-sec" style="margin-top:20px" id="btnBack">← Back</button>
+    </div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="game" class="screen">
+    <div class="card" style="padding:15px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <button class="btn" id="btnExit" style="width:auto;padding:5px 12px;font-size:0.9rem">Exit</button>
+            <div id="status">White's Turn</div>
+            <button class="btn btn-sec" id="btnReset" style="width:auto;padding:5px 12px;font-size:0.9rem">Reset</button>
+        </div>
+        
+        <div id="board"></div>
+        
+        <div id="onlineInfo" style="display:none;font-size:0.85rem;color:#666;margin-top:5px">
+            <span style="display:inline-block;width:8px;height:8px;background:#00b894;border-radius:50%;margin-right:4px"></span>
+            <span id="connText">Connected</span>
+        </div>
+    </div>
+</div>
+
+<!-- RULES MODAL -->
+<div id="rulesModal" class="modal">
+    <div class="card">
+        <h2>🎮 Rules</h2>
+        <div style="text-align:left;font-size:0.95rem;line-height:1.5;margin:10px 0">            <p><b>🔄 Piece Changes:</b></p>
+            <ul style="padding-left:20px;margin:8px 0">
+                <li>👑 <b>King</b>: Moves like a Queen (any squares, any direction)</li>
+                <li>♛ <b>Queen</b>: Moves like a King (1 square only)</li>
+                <li>Other pieces: Normal chess moves</li>
+            </ul>
+            <p><b>🎯 Winning:</b> Checkmate the opponent's King!</p>
+            <p><i>Note: No castling or en passant.</i></p>
+        </div>
+        <button class="btn" id="btnCloseRules">Got it!</button>
+    </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameOver" class="modal">
+    <div class="card">
+        <div style="font-size:3rem;margin:10px 0" id="winnerEmoji">🏆</div>
+        <h2 id="winnerText">Checkmate!</h2>
+        <p id="resultMsg" style="font-size:1.1rem;margin:10px 0">White wins!</p>
+        <div style="display:flex;gap:10px;margin-top:15px">
+            <button class="btn" id="btnAgain">Play Again</button>
+            <button class="btn btn-sec" id="btnMenu">Menu</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===== DEBUG HELPER =====
+function log(msg) {
+    console.log('[Chess]', msg);
+    const debug = document.getElementById('debug');
+    if (debug) {
+        debug.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+        debug.scrollTop = debug.scrollHeight;
+    }
+}
+function toggleDebug() {
+    document.getElementById('debug').classList.toggle('show');
+}
+log('Script loaded');
+
+// ===== CONFIG =====
+const PIECES = {
+    w: {k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},
+    b: {k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}
+};
+const START = [
+    ['br','bn','bb','bq','bk','bb','bn','br'],
+    ['bp','bp','bp','bp','bp','bp','bp','bp'],
+    ['','','','','','','',''],    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['wp','wp','wp','wp','wp','wp','wp','wp'],
+    ['wr','wn','wb','wq','wk','wb','wn','wr']
+];
+
+// ===== STATE =====
+let board, turn, selected, validMoves, gameActive, mode;
+let kingPos = {w:{r:7,c:4}, b:{r:0,c:4}};
+let peer, conn, myId, myColor, isMyTurn;
+
+// ===== DOM GETTER WITH ERROR CHECK =====
+function $(id) {
+    const el = document.getElementById(id);
+    if (!el) log(`ERROR: Element #${id} not found!`);
+    return el;
+}
+
+// ===== TOAST =====
+function toast(msg, duration = 2000) {
+    log(`Toast: ${msg}`);
+    const t = $('toast');
+    if (t) {
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), duration);
+    }
+}
+
+// ===== NAVIGATION (FIXED) =====
+function showScreen(screenId) {
+    log(`Navigating to: ${screenId}`);
+    try {
+        // Hide all screens
+        document.querySelectorAll('.screen').forEach(s => {
+            s.classList.remove('active');
+            log(`Hidden: ${s.id}`);
+        });
+        // Show target screen
+        const target = $(screenId);
+        if (target) {
+            target.classList.add('active');
+            log(`Showing: ${screenId} ✓`);
+        } else {
+            log(`ERROR: Could not show ${screenId}`);
+            toast('Navigation error');
+        }
+    } catch(e) {
+        log(`NAV ERROR: ${e.message}`);        toast('Error switching screens');
+    }
+}
+
+// ===== BUTTON HANDLERS (EXPLICIT) =====
+function setupButtons() {
+    log('Setting up button handlers...');
+    
+    // Home buttons
+    const btnLocal = $('btnLocal');
+    if (btnLocal) {
+        btnLocal.onclick = function(e) {
+            e.preventDefault();
+            log('Local button clicked');
+            startLocal();
+        };
+        log('✓ btnLocal handler attached');
+    }
+    
+    const btnOnline = $('btnOnline');
+    if (btnOnline) {
+        btnOnline.onclick = function(e) {
+            e.preventDefault();
+            log('Online button clicked');
+            showLobby();
+        };
+        log('✓ btnOnline handler attached');
+    }
+    
+    const btnRules = $('btnRules');
+    if (btnRules) {
+        btnRules.onclick = function(e) {
+            e.preventDefault();
+            log('Rules button clicked');
+            showRules();
+        };
+        log('✓ btnRules handler attached');
+    }
+    
+    // Lobby buttons
+    const btnCreate = $('btnCreate');
+    if (btnCreate) {
+        btnCreate.onclick = function(e) {
+            e.preventDefault();
+            log('Create room clicked');
+            createRoom();
+        };
+    }
+    
+    const btnJoin = $('btnJoin');    if (btnJoin) {
+        btnJoin.onclick = function(e) {
+            e.preventDefault();
+            log('Join room clicked');
+            joinRoom();
+        };
+    }
+    
+    const btnBack = $('btnBack');
+    if (btnBack) {
+        btnBack.onclick = function(e) {
+            e.preventDefault();
+            log('Back button clicked');
+            goHome();
+        };
+    }
+    
+    // Game buttons
+    const btnExit = $('btnExit');
+    if (btnExit) {
+        btnExit.onclick = function(e) {
+            e.preventDefault();
+            log('Exit clicked');
+            goHome();
+        };
+    }
+    
+    const btnReset = $('btnReset');
+    if (btnReset) {
+        btnReset.onclick = function(e) {
+            e.preventDefault();
+            log('Reset clicked');
+            resetGame();
+        };
+    }
+    
+    // Modal buttons
+    const btnCloseRules = $('btnCloseRules');
+    if (btnCloseRules) {
+        btnCloseRules.onclick = function(e) {
+            e.preventDefault();
+            hideRules();
+        };
+    }
+    
+    const btnAgain = $('btnAgain');
+    if (btnAgain) {
+        btnAgain.onclick = function(e) {
+            e.preventDefault();
+            playAgain();        };
+    }
+    
+    const btnMenu = $('btnMenu');
+    if (btnMenu) {
+        btnMenu.onclick = function(e) {
+            e.preventDefault();
+            goHome();
+        };
+    }
+    
+    // Share buttons
+    const btnCopy = $('btnCopy');
+    if (btnCopy) {
+        btnCopy.onclick = function(e) {
+            e.preventDefault();
+            copyId();
+        };
+    }
+    
+    const btnShare = $('btnShare');
+    if (btnShare) {
+        btnShare.onclick = function(e) {
+            e.preventDefault();
+            shareId();
+        };
+    }
+    
+    log('✓ All button handlers attached');
+}
+
+// ===== SCREEN FUNCTIONS =====
+function goHome() {
+    log('goHome() called');
+    if (conn) { conn.close(); conn = null; log('Connection closed'); }
+    if (peer) { peer.destroy(); peer = null; log('Peer destroyed'); }
+    mode = 'local';
+    showScreen('home');
+    const oi = $('onlineInfo');
+    if (oi) oi.style.display = 'none';
+}
+
+function showLobby() {
+    log('showLobby() called');
+    showScreen('lobby');
+    const created = $('created');
+    if (created) created.style.display = 'none';
+    const js = $('joinStatus');
+    if (js) js.textContent = '';
+    const ji = $('joinInput');    if (ji) ji.value = '';
+}
+
+function showRules() {
+    log('showRules() called');
+    const rm = $('rulesModal');
+    if (rm) rm.classList.add('active');
+}
+
+function hideRules() {
+    log('hideRules() called');
+    const rm = $('rulesModal');
+    if (rm) rm.classList.remove('active');
+}
+
+function startLocal() {
+    log('startLocal() called');
+    mode = 'local';
+    showScreen('game');
+    const oi = $('onlineInfo');
+    if (oi) oi.style.display = 'none';
+    resetGame();
+}
+
+// ===== GAME INIT =====
+function init() {
+    log('=== INIT START ===');
+    try {
+        createBoard();
+        log('Board created');
+        resetGame();
+        log('Game reset');
+        setupButtons();
+        log('Buttons setup');
+        setupPeer();
+        log('Peer setup');
+        log('=== INIT COMPLETE ===');
+    } catch(e) {
+        log(`INIT ERROR: ${e.message}\n${e.stack}`);
+        toast('Init error - check console');
+    }
+}
+
+function createBoard() {
+    log('Creating board...');
+    const boardEl = $('board');
+    if (!boardEl) { log('ERROR: #board not found'); return; }
+    
+    boardEl.innerHTML = '';
+    for(let r=0; r<8; r++) {        for(let c=0; c<8; c++) {
+            const sq = document.createElement('div');
+            sq.className = `sq ${(r+c)%2?'b':'w'}`;
+            sq.dataset.r = r; 
+            sq.dataset.c = c;
+            sq.onclick = () => clickSq(r, c);
+            boardEl.appendChild(sq);
+        }
+    }
+    log('Board created: 64 squares');
+}
+
+function resetGame() {
+    log('resetGame()');
+    board = JSON.parse(JSON.stringify(START));
+    turn = 'w';
+    selected = null;
+    validMoves = [];
+    kingPos = {w:{r:7,c:4}, b:{r:0,c:4}};
+    gameActive = true;
+    if (mode === 'online') isMyTurn = (myColor === 'w');
+    render();
+    updateStatus();
+}
+
+// ===== CORE LOGIC (simplified for debugging) =====
+function pieceAt(r,c) { 
+    return (r>=0 && r<8 && c>=0 && c<8) ? board[r][c] : null; 
+}
+
+function parse(code) { 
+    return code ? {color:code[0], type:code[1]} : null; 
+}
+
+function getMoves(r,c,code) {
+    const p = parse(code); 
+    if (!p) return [];
+    const moves = [], color = p.color, type = p.type;
+    
+    const tryAdd = (nr, nc) => {
+        if (nr<0||nr>=8||nc<0||nc>=8) return false;
+        const t = pieceAt(nr,nc);
+        if (t === '' || (parse(t) && parse(t).color !== color)) { 
+            moves.push({r:nr, c:nc}); 
+            return t !== ''; 
+        }
+        return true;
+    };
+    
+    // KING = Queen moves    if (type === 'k') {
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (const [dr,dc] of dirs) {
+            let nr = r+dr, nc = c+dc;
+            while (nr>=0 && nr<8 && nc>=0 && nc<8) {
+                const t = pieceAt(nr,nc);
+                if (t === '') moves.push({r:nr, c:nc});
+                else { 
+                    if (parse(t) && parse(t).color !== color) moves.push({r:nr, c:nc}); 
+                    break; 
+                }
+                nr += dr; nc += dc;
+            }
+        }
+    }
+    // QUEEN = King moves
+    else if (type === 'q') {
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (const [dr,dc] of dirs) tryAdd(r+dr, c+dc);
+    }
+    // ROOK
+    else if (type === 'r') {
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        for (const [dr,dc] of dirs) {
+            let nr = r+dr, nc = c+dc;
+            while (nr>=0 && nr<8 && nc>=0 && nc<8) {
+                const t = pieceAt(nr,nc);
+                if (t === '') moves.push({r:nr, c:nc});
+                else { 
+                    if (parse(t) && parse(t).color !== color) moves.push({r:nr, c:nc}); 
+                    break; 
+                }
+                nr += dr; nc += dc;
+            }
+        }
+    }
+    // BISHOP
+    else if (type === 'b') {
+        const dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (const [dr,dc] of dirs) {
+            let nr = r+dr, nc = c+dc;
+            while (nr>=0 && nr<8 && nc>=0 && nc<8) {
+                const t = pieceAt(nr,nc);
+                if (t === '') moves.push({r:nr, c:nc});
+                else { 
+                    if (parse(t) && parse(t).color !== color) moves.push({r:nr, c:nc}); 
+                    break; 
+                }
+                nr += dr; nc += dc;
+            }        }
+    }
+    // KNIGHT
+    else if (type === 'n') {
+        const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+        for (const [dr,dc] of jumps) tryAdd(r+dr, c+dc);
+    }
+    // PAWN
+    else if (type === 'p') {
+        const dir = color === 'w' ? -1 : 1;
+        const start = color === 'w' ? 6 : 1;
+        if (pieceAt(r+dir, c) === '') {
+            moves.push({r: r+dir, c});
+            if (r === start && pieceAt(r+dir*2, c) === '') {
+                moves.push({r: r+dir*2, c});
+            }
+        }
+        if (c > 0) {
+            const t = pieceAt(r+dir, c-1);
+            if (t && parse(t) && parse(t).color !== color) moves.push({r: r+dir, c: c-1});
+        }
+        if (c < 7) {
+            const t = pieceAt(r+dir, c+1);
+            if (t && parse(t) && parse(t).color !== color) moves.push({r: r+dir, c: c+1});
+        }
+    }
+    return moves;
+}
+
+function inCheck(color) {
+    const kp = kingPos[color]; 
+    if (!kp) return false;
+    for (let r=0; r<8; r++) {
+        for (let c=0; c<8; c++) {
+            const pc = pieceAt(r,c);
+            if (pc) {
+                const p = parse(pc);
+                if (p && p.color !== color) {
+                    const moves = getMoves(r, c, pc);
+                    if (moves.some(m => m.r === kp.r && m.c === kp.c)) return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function isMate(color) {
+    if (!inCheck(color)) return false;
+    // Simplified: just check if king can move to escape    const kp = kingPos[color];
+    if (!kp) return true;
+    const kingCode = color + 'k';
+    const escapes = getMoves(kp.r, kp.c, kingCode);
+    // Filter out moves that still leave king in check
+    const safe = escapes.filter(m => {
+        // Simulate move
+        const saved = board[m.r][m.c];
+        board[m.r][m.c] = kingCode;
+        board[kp.r][kp.c] = '';
+        const stillCheck = inCheck(color);
+        // Undo
+        board[kp.r][kp.c] = kingCode;
+        board[m.r][m.c] = saved;
+        return !stillCheck;
+    });
+    return safe.length === 0;
+}
+
+// ===== INTERACTION =====
+function clickSq(r, c) {
+    if (!gameActive) return;
+    if (mode === 'online' && !isMyTurn) return;
+    
+    const pc = pieceAt(r,c);
+    const p = parse(pc);
+    
+    // Select own piece
+    if (p && p.color === turn) {
+        selected = {r, c};
+        validMoves = getMoves(r, c, pc);
+        render();
+        return;
+    }
+    
+    // Move to valid square
+    if (selected) {
+        const mv = validMoves.find(m => m.r === r && m.c === c);
+        if (mv) {
+            doMove(selected, mv);
+        } else {
+            // Deselect
+            selected = null;
+            validMoves = [];
+            render();
+        }
+    }
+}
+
+function doMove(from, to, remote = false) {    log(`Move: ${from.r},${from.c} → ${to.r},${to.c}`);
+    
+    const pc = board[from.r][from.c];
+    const cap = board[to.r][to.c];
+    const p = parse(pc);
+    
+    // Update king position
+    if (p && p.type === 'k') {
+        kingPos[p.color] = {r: to.r, c: to.c};
+    }
+    
+    // Move piece
+    board[to.r][to.c] = pc;
+    board[from.r][from.c] = '';
+    
+    // Pawn promotion
+    if (p && p.type === 'p' && (to.r === 0 || to.r === 7)) {
+        board[to.r][to.c] = p.color + 'q';
+    }
+    
+    const opp = turn === 'w' ? 'b' : 'w';
+    let won = false, winner = null;
+    
+    // Check win: king captured or checkmate
+    if (cap && parse(cap) && parse(cap).type === 'k') {
+        won = true; winner = turn;
+    } else if (isMate(opp)) {
+        won = true; winner = turn;
+    }
+    
+    // Switch turn
+    turn = opp;
+    selected = null;
+    validMoves = [];
+    
+    // Network sync
+    if (mode === 'online' && !remote && conn && conn.open) {
+        conn.send({t: 'mv', f: from, to: to, pc: pc, cap: cap});
+        isMyTurn = false;
+    }
+    
+    render();
+    updateStatus();
+    
+    if (won) endGame(winner);
+}
+
+function render() {
+    const squares = document.querySelectorAll('.sq');
+    squares.forEach(sq => {        const r = +sq.dataset.r;
+        const c = +sq.dataset.c;
+        const pc = pieceAt(r,c);
+        const p = parse(pc);
+        
+        // Reset classes
+        sq.className = `sq ${(r+c)%2 ? 'b' : 'w'}`;
+        sq.innerHTML = '';
+        
+        // Selected highlight
+        if (selected && selected.r === r && selected.c === c) {
+            sq.classList.add('sel');
+        }
+        
+        // Valid moves
+        const vm = validMoves.some(m => m.r === r && m.c === c);
+        if (vm) {
+            sq.classList.add(pieceAt(r,c) ? 'cap' : 'valid');
+        }
+        
+        // King in check
+        if (p && p.type === 'k' && inCheck(p.color)) {
+            sq.classList.add('check');
+        }
+        
+        // Render piece
+        if (pc && p) {
+            const el = document.createElement('span');
+            el.className = `piece ${p.color === 'w' ? 'w' : 'b'}`;
+            el.textContent = PIECES[p.color][p.type];
+            sq.appendChild(el);
+        }
+    });
+}
+
+function updateStatus() {
+    const status = $('status');
+    if (!status) return;
+    
+    if (mode === 'online' && !isMyTurn) {
+        status.textContent = 'Waiting...';
+        status.className = '';
+        return;
+    }
+    
+    const nm = turn === 'w' ? 'White' : 'Black';
+    const chk = inCheck(turn);
+    status.textContent = chk ? `${nm} in CHECK!` : `${nm}'s Turn`;
+    status.className = chk ? 'check' : '';
+}
+function endGame(winner) {
+    gameActive = false;
+    const nm = winner === 'w' ? 'White' : 'Black';
+    const em = winner === 'w' ? '♔' : '♚';
+    
+    const we = $('winnerEmoji');
+    const wt = $('winnerText');
+    const rm = $('resultMsg');
+    const go = $('gameOver');
+    
+    if (we) we.textContent = em;
+    if (wt) wt.textContent = 'Checkmate!';
+    if (rm) rm.textContent = `${nm} wins!`;
+    if (go) go.classList.add('active');
+}
+
+function playAgain() {
+    const go = $('gameOver');
+    if (go) go.classList.remove('active');
+    resetGame();
+}
+
+// ===== PEERJS (with error handling) =====
+function setupPeer() {
+    log('Setting up PeerJS...');
+    try {
+        const peerId = 'tc-' + Math.random().toString(36).slice(2, 10);
+        peer = new Peer(peerId, {
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            secure: true
+        });
+        
+        peer.on('open', (id) => {
+            myId = id;
+            log(`Peer connected: ${id}`);
+        });
+        
+        peer.on('connection', (c) => {
+            log('Incoming connection');
+            handleConn(c);
+        });
+        
+        peer.on('error', (err) => {
+            log(`Peer error: ${err.type} - ${err.message}`);
+            toast('Connection error');
+            const loader = $('loader');
+            if (loader) loader.style.display = 'none';        });
+        
+        log('PeerJS setup complete');
+    } catch(e) {
+        log(`PeerJS setup failed: ${e.message}`);
+    }
+}
+
+function handleConn(c) {
+    conn = c;
+    log('Connection object created');
+    
+    conn.on('open', () => {
+        log('Connection opened');
+        const loader = $('loader');
+        if (loader) loader.style.display = 'none';
+        
+        const hs = $('hostStatus');
+        if (hs) hs.textContent = 'Connected! Starting...';
+        
+        mode = 'online';
+        myColor = 'w';
+        isMyTurn = true;
+        
+        const oi = $('onlineInfo');
+        const ct = $('connText');
+        if (oi) oi.style.display = 'block';
+        if (ct) ct.textContent = 'Connected (Host)';
+        
+        showScreen('game');
+        resetGame();
+    });
+    
+    conn.on('data', (data) => {
+        log(`Received: ${JSON.stringify(data)}`);
+        if (data && data.t === 'mv') {
+            // Apply opponent move
+            board[data.to.r][data.to.c] = data.pc;
+            board[data.f.r][data.f.c] = '';
+            
+            const p = parse(data.pc);
+            if (p && p.type === 'k') {
+                kingPos[p.color] = {r: data.to.r, c: data.to.c};
+            }
+            if (p && p.type === 'p' && (data.to.r === 0 || data.to.r === 7)) {
+                board[data.to.r][data.to.c] = p.color + 'q';
+            }
+            
+            turn = turn === 'w' ? 'b' : 'w';
+            isMyTurn = true;            
+            if (isMate(turn)) {
+                endGame(turn === 'w' ? 'b' : 'w');
+            }
+            
+            render();
+            updateStatus();
+        }
+        if (data && data.t === 'left') {
+            toast('Opponent left');
+            setTimeout(goHome, 1500);
+        }
+    });
+    
+    conn.on('close', () => {
+        log('Connection closed');
+        toast('Disconnected');
+        setTimeout(() => {
+            if (confirm('Opponent left. Return to menu?')) {
+                goHome();
+            }
+        }, 1000);
+    });
+    
+    conn.on('error', (err) => {
+        log(`Connection error: ${err.message}`);
+        toast('Connection lost');
+    });
+}
+
+function createRoom() {
+    log('createRoom()');
+    if (!myId) {
+        toast('Connecting... Please wait');
+        return;
+    }
+    
+    const roomId = $('roomId');
+    const created = $('created');
+    const loader = $('loader');
+    const hs = $('hostStatus');
+    
+    if (roomId) roomId.textContent = myId;
+    if (created) created.style.display = 'block';
+    if (loader) loader.style.display = 'block';
+    if (hs) hs.textContent = 'Waiting for opponent...';
+    
+    toast('Room created! Share your ID');
+}
+function joinRoom() {
+    const ji = $('joinInput');
+    const id = ji ? ji.value.trim() : '';
+    
+    if (!id) {
+        toast('Enter Room ID');
+        return;
+    }
+    
+    log(`Joining room: ${id}`);
+    
+    const loader = $('loader');
+    const js = $('joinStatus');
+    
+    if (loader) loader.style.display = 'block';
+    if (js) {
+        js.textContent = 'Connecting...';
+        js.style.color = '#666';
+    }
+    
+    try {
+        const c = peer.connect(id);
+        handleConn(c);
+        
+        mode = 'online';
+        myColor = 'b';
+        isMyTurn = false;
+    } catch(e) {
+        log(`Join error: ${e.message}`);
+        if (js) {
+            js.textContent = 'Connection failed';
+            js.style.color = 'red';
+        }
+        if (loader) loader.style.display = 'none';
+        toast('Failed to connect');
+    }
+}
+
+function copyId() {
+    if (!myId) return;
+    navigator.clipboard.writeText(myId)
+        .then(() => toast('ID copied!'))
+        .catch(() => toast('Copy failed'));
+}
+
+function shareId() {
+    if (!myId) return;
+    const txt = `Join Twisted Chess!\nRoom: ${myId}\n👑King=Queen moves\n♛Queen=King moves`;
+    
+    if (navigator.share) {        navigator.share({title: 'Twisted Chess', text: txt})
+            .catch(() => copyId());
+    } else {
+        copyId();
+    }
+}
+
+// ===== EVENT LISTENERS =====
+window.addEventListener('load', () => {
+    log('Window loaded');
+    init();
+});
+
+// Close modals on outside click
+window.addEventListener('click', (e) => {
+    if (e.target.classList && e.target.classList.contains('modal')) {
+        e.target.classList.remove('active');
+    }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal').forEach(m => m.classList.remove('active'));
+        if ($('game') && $('game').classList.contains('active')) {
+            goHome();
+        }
+    }
+});
+
+log('Event listeners attached');
+</script>
+</body>
+</html>
