@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twisted Chess - King ↔ Queen Swap</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: #FFF8E1;
+            background-image: radial-gradient(#d7ccc8 1px, transparent 1px);
+            background-size: 20px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            color: #2c3e50;
+        }
+        .screen { 
+            display: none; 
+            flex-direction: column; 
+            align-items: center; 
+            width: 100%; 
+            max-width: 450px;
+            animation: fadeIn 0.3s ease;
+        }
+        .screen.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .card {
+            background: white;
+            border: 4px solid #2c3e50;
+            border-radius: 20px;
+            box-shadow: 8px 8px 0 #2c3e50;
+            padding: 20px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 { font-size: 1.8rem; margin-bottom: 15px; color: #2c3e50; }
+        h2 { font-size: 1.4rem; margin: 10px 0; color: #2c3e50; }
+        h3 { font-size: 1.1rem; margin: 15px 0 5px; color: #2c3e50; }
+        
+        .btn {
+            display: block;
+            width: 100%;            padding: 12px;
+            margin: 8px 0;
+            border: 3px solid #2c3e50;
+            border-radius: 15px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s;
+            text-decoration: none;
+        }
+        .btn:active { transform: translate(2px, 2px); box-shadow: 3px 3px 0 #2c3e50; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-local { background: #FFB74D; color: white; box-shadow: 5px 5px 0 #E65100; }
+        .btn-online { background: #6C5CE7; color: white; box-shadow: 5px 5px 0 #4834d4; }
+        .btn-ai { background: #FD79A8; color: white; box-shadow: 5px 5px 0 #E84393; }
+        .btn-sec { background: #A5D6A7; color: #2c3e50; box-shadow: 5px 5px 0 #2c3e50; }
+        .btn-whatsapp { background: #25D366; color: white; box-shadow: 5px 5px 0 #128C7E; }
+        
+        .rules {
+            background: #e8f4fd;
+            border: 2px dashed #2c3e50;
+            border-radius: 10px;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 0.9rem;
+            text-align: left;
+            line-height: 1.5;
+        }
+        .rules b { color: #6C5CE7; }
+        
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 320px;
+            height: 320px;
+            border: 4px solid #2c3e50;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: white;
+        }
+        .sq {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            position: relative;
+            user-select: none;        }
+        .sq.w { background: #f0d9b5; }
+        .sq.b { background: #b58863; }
+        .sq.sel { background: #f1c40f !important; }
+        .sq.valid::after {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: rgba(46, 204, 113, 0.7);
+            border-radius: 50%;
+            border: 2px solid #2c3e50;
+        }
+        .sq.cap { background: rgba(231, 76, 60, 0.5) !important; }
+        .sq.check { background: rgba(231, 76, 60, 0.4) !important; animation: pulse 0.3s; }
+        @keyframes pulse { 50% { transform: scale(1.05); } }
+        
+        .piece { font-size: 30px; line-height: 1; }
+        .piece.w { color: #fff; text-shadow: 0 0 2px #000, 1px 1px 2px #000; }
+        .piece.b { color: #000; }
+        
+        #status {
+            font-size: 1.2rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            background: #ffeaa7;
+            border: 2px solid #2c3e50;
+            border-radius: 20px;
+            margin: 10px 0;
+            min-width: 200px;
+            text-align: center;
+        }
+        #status.check { background: #ff7675; color: white; }
+        #status.thinking { background: #74b9ff; color: white; animation: pulse 1s infinite; }
+        
+        .room-id {
+            background: #fff;
+            border: 2px dashed #2c3e50;
+            border-radius: 10px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 1.1rem;
+            margin: 10px 0;
+            word-break: break-all;
+            font-weight: bold;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(44,62,80,0.9);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+        }
+        .modal.active { display: flex; }
+        .modal .card { max-width: 400px; animation: pop 0.3s ease; }
+        @keyframes pop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .input-row { display: flex; gap: 8px; margin: 15px 0; }
+        .input-row input {
+            flex: 1;
+            padding: 10px;
+            border: 3px solid #2c3e50;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 1rem;
+            outline: none;
+        }
+        
+        .loader {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #6C5CE7;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            animation: spin 1s linear infinite;            margin: 15px auto;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        
+        .connection-info {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 5px;
+        }
+        .connection-info.online {
+            color: #00b894;
+            font-weight: 600;
+        }
+        
+        .difficulty-select {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            justify-content: center;
+        }
+        .diff-btn {
+            flex: 1;
+            padding: 10px;
+            border: 3px solid #2c3e50;
+            border-radius: 12px;
+            background: white;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .diff-btn.active {
+            background: #FD79A8;
+            color: white;
+            box-shadow: 3px 3px 0 #E84393;
+        }
+        
+        @media (max-width: 400px) {
+            #board { width: 280px; height: 280px; }
+            .sq { font-size: 24px; }
+            .piece { font-size: 26px; }
+            h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<!-- HOME SCREEN --><div id="home" class="screen active">
+    <div class="card">
+        <h1>♟️ Twisted Chess</h1>
+        <div class="rules">
+            <b>🔄 The Twist:</b><br>
+            👑 King → moves like Queen (any distance)<br>
+            ♛ Queen → moves like King (1 square)<br>
+            🎯 Win by checkmating the King!
+        </div>
+        <button class="btn btn-ai" onclick="showAIDifficulty()">🤖 vs Computer</button>
+        <button class="btn btn-local" onclick="startLocalGame()">👥 Local 1v1</button>
+        <button class="btn btn-online" onclick="showLobby()">🌍 Online 1v1</button>
+        <button class="btn btn-sec" onclick="showRules()">📜 Rules</button>
+    </div>
+</div>
+
+<!-- AI DIFFICULTY SCREEN -->
+<div id="ai-difficulty" class="screen">
+    <div class="card">
+        <h2>🤖 Select Difficulty</h2>
+        <p style="margin:10px 0">Choose how smart the computer should be:</p>
+        
+        <div class="difficulty-select">
+            <button class="diff-btn" onclick="setDifficulty('easy', this)">Easy</button>
+            <button class="diff-btn active" onclick="setDifficulty('medium', this)">Medium</button>
+            <button class="diff-btn" onclick="setDifficulty('hard', this)">Hard</button>
+        </div>
+        
+        <div class="rules" style="margin-top:15px">
+            <b>🟢 Easy:</b> Random moves<br>
+            <b>🟡 Medium:</b> Captures pieces when possible<br>
+            <b>🔴 Hard:</b> Thinks ahead & protects king
+        </div>
+        
+        <button class="btn btn-ai" style="margin-top:15px" onclick="startAIGame()">🎮 Start Game</button>
+        <button class="btn btn-sec" onclick="showScreen('home')">← Back</button>
+    </div>
+</div>
+
+<!-- LOBBY SCREEN -->
+<div id="lobby" class="screen">
+    <div class="card">
+        <h2>🌍 Online Play</h2>
+        
+        <h3>🏠 Create Room</h3>
+        <button class="btn btn-online" id="btnCreateRoom" onclick="createRoom()">✨ Create Room</button>
+        <div id="created" style="display:none">
+            <p style="margin:10px 0 5px">Share this Room ID with your friend:</p>
+            <div class="room-id" id="roomId">Loading...</div>
+            <button class="btn" onclick="copyRoomId()">📋 Copy ID</button>            <button class="btn btn-whatsapp" onclick="shareWhatsApp()">🟢 WhatsApp</button>
+            <button class="btn btn-sec" onclick="shareLink()">📤 Share Link</button>
+            <p class="connection-info" id="hostStatus">Waiting for opponent...</p>
+        </div>
+        
+        <div style="margin:20px 0;border-bottom:2px solid #eee"></div>
+        
+        <h3>🔑 Join Room</h3>
+        <div class="input-row">
+            <input type="text" id="joinInput" placeholder="Paste Room ID here" maxlength="36">
+            <button class="btn btn-online" style="width:auto;padding:10px 15px" onclick="joinRoom()">Join</button>
+        </div>
+        <p class="connection-info" id="joinStatus"></p>
+        
+        <div class="loader" id="loader"></div>
+        
+        <button class="btn btn-sec" style="margin-top:20px" onclick="goHome()">← Back to Menu</button>
+    </div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="game" class="screen">
+    <div class="card" style="padding:15px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:5px">
+            <button class="btn btn-sec" style="width:auto;padding:5px 12px;font-size:0.9rem" onclick="goHome()">Exit</button>
+            <div id="status">White's Turn</div>
+            <button class="btn btn-sec" style="width:auto;padding:5px 12px;font-size:0.9rem" onclick="resetGame()">Reset</button>
+        </div>
+        
+        <div id="board"></div>
+        
+        <div class="connection-info" id="gameInfo" style="display:none">
+            <span style="display:inline-block;width:8px;height:8px;background:#00b894;border-radius:50%;margin-right:4px"></span>
+            <span id="gameInfoText">Connected</span>
+        </div>
+    </div>
+</div>
+
+<!-- RULES MODAL -->
+<div id="rulesModal" class="modal" onclick="hideRules()">
+    <div class="card" onclick="event.stopPropagation()">
+        <h2>🎮 Game Rules</h2>
+        <div style="text-align:left;font-size:0.95rem;line-height:1.6;margin:10px 0">
+            <p><b>🔄 Piece Changes:</b></p>
+            <ul style="padding-left:20px;margin:8px 0">
+                <li>👑 <b>King</b>: Moves like a Queen - any number of squares in any direction</li>
+                <li>♛ <b>Queen</b>: Moves like a King - only 1 square in any direction</li>
+                <li>♜ Rook, ♝ Bishop, ♞ Knight, ♙ Pawn: Standard chess moves</li>
+            </ul>
+            <p><b>🎯 Winning:</b></p>            <ul style="padding-left:20px;margin:8px 0">
+                <li>Put the opponent's King in Check (under attack)</li>
+                <li>If they cannot escape = Checkmate = You Win!</li>
+                <li>Capturing the King also wins</li>
+            </ul>
+            <p><i>⚠️ Note: Castling and en passant are disabled for simplicity.</i></p>
+        </div>
+        <button class="btn" onclick="hideRules()">Got it!</button>
+    </div>
+</div>
+
+<!-- GAME OVER MODAL -->
+<div id="gameOver" class="modal">
+    <div class="card">
+        <div style="font-size:3rem;margin:10px 0" id="winnerEmoji">🏆</div>
+        <h2 id="winnerText">Checkmate!</h2>
+        <p id="resultMsg" style="font-size:1.1rem;margin:10px 0">White wins!</p>
+        <div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap">
+            <button class="btn" style="flex:1" onclick="playAgain()">Play Again</button>
+            <button class="btn btn-sec" style="flex:1" onclick="goHome()">Menu</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== GAME CONSTANTS ====================
+var PIECES = {
+    w: {k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},
+    b: {k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}
+};
+
+var PIECE_VALUES = {
+    'k': 1000, 'q': 90, 'r': 50, 'b': 30, 'n': 30, 'p': 10
+};
+
+var START_BOARD = [
+    ['br','bn','bb','bq','bk','bb','bn','br'],
+    ['bp','bp','bp','bp','bp','bp','bp','bp'],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['wp','wp','wp','wp','wp','wp','wp','wp'],
+    ['wr','wn','wb','wq','wk','wb','wn','wr']
+];
+
+// ==================== GAME STATE ====================
+var board = [];
+var turn = 'w';
+var selected = null;var validMoves = [];
+var gameActive = false;
+var gameMode = 'local';
+var aiDifficulty = 'medium';
+var kingPos = {w:{r:7,c:4}, b:{r:0,c:4}};
+var aiThinking = false;
+
+// ==================== ONLINE STATE ====================
+var peer = null;
+var conn = null;
+var myId = null;
+var myColor = 'w';
+var isMyTurn = true;
+
+// ==================== UTILITY FUNCTIONS ====================
+function $(id) { return document.getElementById(id); }
+
+function showToast(msg, duration) {
+    duration = duration || 2000;
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, duration);
+}
+
+function hideAllScreens() {
+    var screens = document.querySelectorAll('.screen');
+    for (var i = 0; i < screens.length; i++) { screens[i].classList.remove('active'); }
+}
+
+function showScreen(id) {
+    hideAllScreens();
+    $(id).classList.add('active');
+}
+
+// ==================== NAVIGATION ====================
+function goHome() {
+    if (conn) { try { conn.close(); } catch(e) {} conn = null; }
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    gameMode = 'local';
+    aiThinking = false;
+    showScreen('home');
+    $('gameInfo').style.display = 'none';
+    $('onlineIndicator').style.display = 'none';
+}
+
+function showLobby() {
+    showScreen('lobby');
+    $('created').style.display = 'none';
+    $('joinStatus').textContent = '';    $('joinInput').value = '';
+    $('loader').style.display = 'none';
+}
+
+function showRules() { $('rulesModal').classList.add('active'); }
+function hideRules() { $('rulesModal').classList.remove('active'); }
+
+function startLocalGame() {
+    gameMode = 'local';
+    showScreen('game');
+    $('gameInfo').style.display = 'none';
+    resetGame();
+}
+
+// ==================== AI FUNCTIONS ====================
+function showAIDifficulty() { showScreen('ai-difficulty'); }
+
+function setDifficulty(level, btn) {
+    aiDifficulty = level;
+    var buttons = document.querySelectorAll('.diff-btn');
+    for (var i = 0; i < buttons.length; i++) { buttons[i].classList.remove('active'); }
+    btn.classList.add('active');
+}
+
+function startAIGame() {
+    gameMode = 'ai';
+    showScreen('game');
+    $('gameInfo').style.display = 'block';
+    $('gameInfoText').textContent = '🤖 vs Computer (' + aiDifficulty + ')';
+    resetGame();
+}
+
+function makeAIMove() {
+    if (!gameActive || aiThinking || turn !== 'b') return;
+    
+    aiThinking = true;
+    $('status').textContent = 'Computer thinking...';
+    $('status').className = 'thinking';
+    
+    var delay = aiDifficulty === 'easy' ? 400 : (aiDifficulty === 'medium' ? 800 : 1200);
+    
+    setTimeout(function() {
+        var move = getBestMove('b');
+        if (move) { executeMove(move.from, move.to); }
+        aiThinking = false;
+        if (gameActive) updateStatus();
+    }, delay);
+}
+
+function getAllMoves(color) {    var moves = [];
+    for (var r = 0; r < 8; r++) {
+        for (var c = 0; c < 8; c++) {
+            var pieceCode = board[r][c];
+            if (pieceCode) {
+                var piece = parsePiece(pieceCode);
+                if (piece && piece.color === color) {
+                    var pieceMoves = getValidMoves(r, c, pieceCode);
+                    for (var i = 0; i < pieceMoves.length; i++) {
+                        moves.push({ from: {r: r, c: c}, to: pieceMoves[i] });
+                    }
+                }
+            }
+        }
+    }
+    return moves;
+}
+
+function getBestMove(color) {
+    var allMoves = getAllMoves(color);
+    if (allMoves.length === 0) return null;
+    
+    // Easy: Random move
+    if (aiDifficulty === 'easy') {
+        return allMoves[Math.floor(Math.random() * allMoves.length)];
+    }
+    
+    // Medium: Prefer captures
+    if (aiDifficulty === 'medium') {
+        var captures = allMoves.filter(function(m) { return board[m.to.r][m.to.c] !== ''; });
+        if (captures.length > 0) {
+            captures.sort(function(a, b) {
+                var valA = PIECE_VALUES[parsePiece(board[a.to.r][a.to.c]).type] || 0;
+                var valB = PIECE_VALUES[parsePiece(board[b.to.r][b.to.c]).type] || 0;
+                return valB - valA;
+            });
+            return captures[0];
+        }
+        return allMoves[Math.floor(Math.random() * allMoves.length)];
+    }
+    
+    // Hard: Evaluate positions
+    if (aiDifficulty === 'hard') {
+        var bestMove = null;
+        var bestScore = -Infinity;
+        
+        for (var i = 0; i < allMoves.length; i++) {
+            var move = allMoves[i];
+            var score = evaluateMove(move, color);
+            if (isWinningMove(move, color)) return move;            if (score > bestScore) { bestScore = score; bestMove = move; }
+        }
+        return bestMove || allMoves[Math.floor(Math.random() * allMoves.length)];
+    }
+    
+    return allMoves[Math.floor(Math.random() * allMoves.length)];
+}
+
+function evaluateMove(move, color) {
+    var score = 0;
+    var captured = board[move.to.r][move.to.c];
+    if (captured) {
+        var cp = parsePiece(captured);
+        score += PIECE_VALUES[cp.type] || 0;
+    }
+    
+    // Check if puts opponent in check
+    var savedBoard = JSON.parse(JSON.stringify(board));
+    var savedKing = {w: {r: kingPos.w.r, c: kingPos.w.c}, b: {r: kingPos.b.r, c: kingPos.b.c}};
+    
+    var piece = board[move.from.r][move.from.c];
+    board[move.to.r][move.to.c] = piece;
+    board[move.from.r][move.from.c] = '';
+    var pt = parsePiece(piece);
+    if (pt.type === 'k') kingPos[color] = {r: move.to.r, c: move.to.c};
+    
+    var opp = color === 'w' ? 'b' : 'w';
+    if (isKingInCheck(opp)) score += 50;
+    
+    board = savedBoard;
+    kingPos = savedKing;
+    
+    // Center control bonus
+    if (move.to.r >= 3 && move.to.r <= 4 && move.to.c >= 3 && move.to.c <= 4) score += 5;
+    
+    // Protect king
+    var kp = kingPos[color];
+    var dist = Math.abs(move.to.r - kp.r) + Math.abs(move.to.c - kp.c);
+    if (dist <= 2) score += 10;
+    
+    return score;
+}
+
+function isWinningMove(move, color) {
+    var savedBoard = JSON.parse(JSON.stringify(board));
+    var savedKing = {w: {r: kingPos.w.r, c: kingPos.w.c}, b: {r: kingPos.b.r, c: kingPos.b.c}};
+    
+    var piece = board[move.from.r][move.from.c];
+    var captured = board[move.to.r][move.to.c];
+    board[move.to.r][move.to.c] = piece;    board[move.from.r][move.from.c] = '';
+    var pt = parsePiece(piece);
+    if (pt.type === 'k') kingPos[color] = {r: move.to.r, c: move.to.c};
+    
+    var opp = color === 'w' ? 'b' : 'w';
+    var wins = (captured && parsePiece(captured).type === 'k') || isCheckmate(opp);
+    
+    board = savedBoard;
+    kingPos = savedKing;
+    return wins;
+}
+
+// ==================== BOARD SETUP ====================
+function createBoard() {
+    var boardEl = $('board');
+    boardEl.innerHTML = '';
+    for (var r = 0; r < 8; r++) {
+        for (var c = 0; c < 8; c++) {
+            var sq = document.createElement('div');
+            sq.className = 'sq ' + ((r + c) % 2 ? 'b' : 'w');
+            sq.setAttribute('data-r', r);
+            sq.setAttribute('data-c', c);
+            (function(row, col) {
+                sq.onclick = function() { handleSquareClick(row, col); };
+            })(r, c);
+            boardEl.appendChild(sq);
+        }
+    }
+}
+
+function resetGame() {
+    board = JSON.parse(JSON.stringify(START_BOARD));
+    turn = 'w';
+    selected = null;
+    validMoves = [];
+    kingPos = {w:{r:7,c:4}, b:{r:0,c:4}};
+    gameActive = true;
+    aiThinking = false;
+    if (gameMode === 'online') isMyTurn = (myColor === 'w');
+    renderBoard();
+    updateStatus();
+}
+
+// ==================== GAME LOGIC ====================
+function getPiece(r, c) {
+    if (r < 0 || r >= 8 || c < 0 || c >= 8) return null;
+    return board[r][c];
+}
+
+function parsePiece(code) {    if (!code) return null;
+    return {color: code[0], type: code[1]};
+}
+
+function getValidMoves(r, c, pieceCode) {
+    var piece = parsePiece(pieceCode);
+    if (!piece) return [];
+    var moves = [];
+    var color = piece.color;
+    var type = piece.type;
+    
+    function tryAdd(nr, nc) {
+        if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return false;
+        var target = getPiece(nr, nc);
+        if (target === '' || (parsePiece(target) && parsePiece(target).color !== color)) {
+            moves.push({r: nr, c: nc});
+            return target !== '';
+        }
+        return true;
+    }
+    
+    // 👑 KING = Queen moves
+    if (type === 'k') {
+        var dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            var nr = r + dirs[i][0], nc = c + dirs[i][1];
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                var target = getPiece(nr, nc);
+                if (target === '') moves.push({r: nr, c: nc});
+                else {
+                    if (parsePiece(target) && parsePiece(target).color !== color) moves.push({r: nr, c: nc});
+                    break;
+                }
+                nr += dirs[i][0]; nc += dirs[i][1];
+            }
+        }
+    }
+    // ♛ QUEEN = King moves
+    else if (type === 'q') {
+        var dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (var i = 0; i < dirs.length; i++) tryAdd(r + dirs[i][0], c + dirs[i][1]);
+    }
+    // ♜ ROOK
+    else if (type === 'r') {
+        var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            var nr = r + dirs[i][0], nc = c + dirs[i][1];
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                var target = getPiece(nr, nc);
+                if (target === '') moves.push({r: nr, c: nc});                else {
+                    if (parsePiece(target) && parsePiece(target).color !== color) moves.push({r: nr, c: nc});
+                    break;
+                }
+                nr += dirs[i][0]; nc += dirs[i][1];
+            }
+        }
+    }
+    // ♝ BISHOP
+    else if (type === 'b') {
+        var dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            var nr = r + dirs[i][0], nc = c + dirs[i][1];
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                var target = getPiece(nr, nc);
+                if (target === '') moves.push({r: nr, c: nc});
+                else {
+                    if (parsePiece(target) && parsePiece(target).color !== color) moves.push({r: nr, c: nc});
+                    break;
+                }
+                nr += dirs[i][0]; nc += dirs[i][1];
+            }
+        }
+    }
+    // ♞ KNIGHT
+    else if (type === 'n') {
+        var jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+        for (var i = 0; i < jumps.length; i++) tryAdd(r + jumps[i][0], c + jumps[i][1]);
+    }
+    // ♙ PAWN
+    else if (type === 'p') {
+        var dir = color === 'w' ? -1 : 1;
+        var startRow = color === 'w' ? 6 : 1;
+        if (getPiece(r + dir, c) === '') {
+            moves.push({r: r + dir, c: c});
+            if (r === startRow && getPiece(r + dir * 2, c) === '') moves.push({r: r + dir * 2, c: c});
+        }
+        if (c > 0) { var t = getPiece(r + dir, c - 1); if (t && parsePiece(t) && parsePiece(t).color !== color) moves.push({r: r + dir, c: c - 1}); }
+        if (c < 7) { var t = getPiece(r + dir, c + 1); if (t && parsePiece(t) && parsePiece(t).color !== color) moves.push({r: r + dir, c: c + 1}); }
+    }
+    return moves;
+}
+
+function isKingInCheck(color) {
+    var kp = kingPos[color];
+    if (!kp) return false;
+    for (var r = 0; r < 8; r++) {
+        for (var c = 0; c < 8; c++) {
+            var pc = getPiece(r, c);
+            if (pc) {                var p = parsePiece(pc);
+                if (p && p.color !== color) {
+                    var moves = getValidMoves(r, c, pc);
+                    for (var i = 0; i < moves.length; i++) {
+                        if (moves[i].r === kp.r && moves[i].c === kp.c) return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function isCheckmate(color) {
+    if (!isKingInCheck(color)) return false;
+    for (var r = 0; r < 8; r++) {
+        for (var c = 0; c < 8; c++) {
+            var pc = getPiece(r, c);
+            if (pc) {
+                var p = parsePiece(pc);
+                if (p && p.color === color) {
+                    var moves = getValidMoves(r, c, pc);
+                    for (var i = 0; i < moves.length; i++) {
+                        var m = moves[i];
+                        var savedT = board[m.r][m.c], savedS = board[r][c];
+                        var savedK = {r: kingPos[color].r, c: kingPos[color].c};
+                        board[m.r][m.c] = savedS; board[r][c] = '';
+                        if (p.type === 'k') kingPos[color] = {r: m.r, c: m.c};
+                        var still = isKingInCheck(color);
+                        board[r][c] = savedS; board[m.r][m.c] = savedT; kingPos[color] = savedK;
+                        if (!still) return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// ==================== INTERACTION ====================
+function handleSquareClick(r, c) {
+    if (!gameActive || aiThinking) return;
+    if (gameMode === 'online' && !isMyTurn) return;
+    if (gameMode === 'ai' && turn === 'b') return;
+    
+    var pieceCode = getPiece(r, c);
+    var piece = parsePiece(pieceCode);
+    
+    if (piece && piece.color === turn) {
+        selected = {r: r, c: c};        validMoves = getValidMoves(r, c, pieceCode);
+        renderBoard();
+        return;
+    }
+    
+    if (selected) {
+        var found = null;
+        for (var i = 0; i < validMoves.length; i++) {
+            if (validMoves[i].r === r && validMoves[i].c === c) { found = validMoves[i]; break; }
+        }
+        if (found) executeMove(selected, found);
+        else { selected = null; validMoves = []; renderBoard(); }
+    }
+}
+
+function executeMove(from, to, isRemote) {
+    var pieceCode = board[from.r][from.c];
+    var captured = board[to.r][to.c];
+    var piece = parsePiece(pieceCode);
+    
+    if (piece && piece.type === 'k') kingPos[piece.color] = {r: to.r, c: to.c};
+    board[to.r][to.c] = pieceCode;
+    board[from.r][from.c] = '';
+    if (piece && piece.type === 'p' && (to.r === 0 || to.r === 7)) board[to.r][to.c] = piece.color + 'q';
+    
+    var opponent = turn === 'w' ? 'b' : 'w';
+    var gameOver = false, winner = null;
+    
+    if (captured && parsePiece(captured) && parsePiece(captured).type === 'k') { gameOver = true; winner = turn; }
+    else if (isCheckmate(opponent)) { gameOver = true; winner = turn; }
+    
+    turn = opponent;
+    selected = null;
+    validMoves = [];
+    
+    if (gameMode === 'online' && !isRemote && conn && conn.open) {
+        conn.send({ type: 'move', from: from, to: to, piece: pieceCode, captured: captured });
+        isMyTurn = false;
+    }
+    
+    renderBoard();
+    updateStatus();
+    
+    if (gameOver) endGame(winner);
+    else if (gameMode === 'ai' && turn === 'b') makeAIMove();
+}
+
+function renderBoard() {
+    var squares = document.querySelectorAll('.sq');
+    for (var i = 0; i < squares.length; i++) {        var sq = squares[i];
+        var r = parseInt(sq.getAttribute('data-r'));
+        var c = parseInt(sq.getAttribute('data-c'));
+        var pieceCode = getPiece(r, c);
+        var piece = parsePiece(pieceCode);
+        
+        sq.className = 'sq ' + ((r + c) % 2 ? 'b' : 'w');
+        sq.innerHTML = '';
+        
+        if (selected && selected.r === r && selected.c === c) sq.classList.add('sel');
+        for (var j = 0; j < validMoves.length; j++) {
+            if (validMoves[j].r === r && validMoves[j].c === c) {
+                sq.classList.add(getPiece(r, c) ? 'cap' : 'valid');
+                break;
+            }
+        }
+        if (piece && piece.type === 'k' && isKingInCheck(piece.color)) sq.classList.add('check');
+        if (pieceCode && piece) {
+            var el = document.createElement('span');
+            el.className = 'piece ' + (piece.color === 'w' ? 'w' : 'b');
+            el.textContent = PIECES[piece.color][piece.type];
+            sq.appendChild(el);
+        }
+    }
+}
+
+function updateStatus() {
+    var status = $('status');
+    if (gameMode === 'online' && !isMyTurn) { status.textContent = 'Waiting...'; status.className = ''; return; }
+    if (gameMode === 'ai' && turn === 'b') { status.textContent = 'Computer thinking...'; status.className = 'thinking'; return; }
+    var nm = turn === 'w' ? 'White' : 'Black';
+    var chk = isKingInCheck(turn);
+    status.textContent = chk ? nm + ' in CHECK!' : nm + "'s Turn";
+    status.className = chk ? 'check' : '';
+}
+
+function endGame(winner) {
+    gameActive = false; aiThinking = false;
+    var nm = winner === 'w' ? 'White' : 'Black';
+    var em = winner === 'w' ? '♔' : '♚';
+    $('winnerEmoji').textContent = em;
+    $('winnerText').textContent = 'Checkmate!';
+    $('resultMsg').textContent = nm + ' wins!';
+    $('gameOver').classList.add('active');
+}
+
+function playAgain() { $('gameOver').classList.remove('active'); resetGame(); }
+
+// ==================== PEERJS ONLINE ====================
+function setupPeer() {    try {
+        var peerId = 'tc-' + Math.random().toString(36).substr(2, 9);
+        peer = new Peer(peerId, { host: '0.peerjs.com', port: 443, path: '/', secure: true });
+        peer.on('open', function(id) { myId = id; console.log('Peer:', id); });
+        peer.on('connection', function(c) { handleConnection(c); });
+        peer.on('error', function(err) { console.error('Peer error:', err); showToast('Connection error'); $('loader').style.display = 'none'; });
+    } catch (e) { console.error('PeerJS failed:', e); }
+}
+
+function handleConnection(c) {
+    conn = c;
+    conn.on('open', function() {
+        console.log('Connected');
+        $('loader').style.display = 'none';
+        if ($('hostStatus')) $('hostStatus').textContent = 'Connected!';
+        gameMode = 'online'; myColor = 'w'; isMyTurn = true;
+        $('gameInfo').style.display = 'block'; $('gameInfoText').textContent = '🌍 Online (Host)';
+        showScreen('game'); resetGame();
+    });
+    conn.on('data', function(d) {
+        if (d.type === 'move') {
+            board[d.to.r][d.to.c] = d.piece;
+            board[d.from.r][d.from.c] = '';
+            var p = parsePiece(d.piece);
+            if (p && p.type === 'k') kingPos[p.color] = {r: d.to.r, c: d.to.c};
+            if (p && p.type === 'p' && (d.to.r === 0 || d.to.r === 7)) board[d.to.r][d.to.c] = p.color + 'q';
+            turn = turn === 'w' ? 'b' : 'w'; isMyTurn = true;
+            if (isCheckmate(turn)) endGame(turn === 'w' ? 'b' : 'w');
+            renderBoard(); updateStatus();
+        }
+    });
+    conn.on('close', function() { showToast('Disconnected'); setTimeout(function() { if (confirm('Opponent left. Return?')) goHome(); }, 1000); });
+}
+
+function createRoom() {
+    if (!peer || !myId) { showToast('Connecting...'); return; }
+    $('roomId').textContent = myId;
+    $('created').style.display = 'block';
+    $('loader').style.display = 'block';
+    $('hostStatus').textContent = 'Waiting...';
+    showToast('Room created!');
+}
+
+function joinRoom() {
+    var id = $('joinInput').value.trim();
+    if (!id) { showToast('Enter Room ID'); return; }
+    $('loader').style.display = 'block';
+    $('joinStatus').textContent = 'Connecting...';
+    try {
+        var c = peer.connect(id);        handleConnection(c);
+        gameMode = 'online'; myColor = 'b'; isMyTurn = false;
+    } catch (e) { console.error('Join failed:', e); $('joinStatus').textContent = 'Failed'; $('loader').style.display = 'none'; showToast('Failed'); }
+}
+
+function copyRoomId() {
+    if (!myId) return;
+    navigator.clipboard.writeText(myId).then(function() { showToast('Copied!'); }).catch(function() {
+        var ta = document.createElement('textarea'); ta.value = myId; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta); showToast('Copied!');
+    });
+}
+
+function shareWhatsApp() {
+    if (!myId) return;
+    var t = '🎮 Twisted Chess\nRoom: ' + myId + '\n👑 King=Queen ♛ Queen=King\n' + window.location.href;
+    window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+}
+
+function shareLink() {
+    if (!myId) return;
+    var t = '🎮 Twisted Chess\nRoom: ' + myId + '\n👑 King=Queen ♛ Queen=King\n' + window.location.href;
+    if (navigator.share) navigator.share({ title: 'Twisted Chess', text: t }).catch(function() { copyRoomId(); });
+    else copyRoomId();
+}
+
+// ==================== MODAL & KEYBOARD ====================
+$('rulesModal').onclick = function(e) { if (e.target === $('rulesModal')) hideRules(); };
+$('gameOver').onclick = function(e) { if (e.target === $('gameOver')) $('gameOver').classList.remove('active'); };
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        if ($('rulesModal').classList.contains('active')) hideRules();
+        else if ($('gameOver').classList.contains('active')) $('gameOver').classList.remove('active');
+        else if ($('game').classList.contains('active')) goHome();
+    }
+});
+
+// ==================== INIT ====================
+window.onload = function() {
+    console.log('Twisted Chess loaded!');
+    createBoard();
+    resetGame();
+    setupPeer();
+    console.log('Ready!');
+};
+</script>
+</body>
+</html>
