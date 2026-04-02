@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twisted Chess</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: #FFF8E1;
+            background-image: radial-gradient(#d7ccc8 1px, transparent 1px);
+            background-size: 20px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+        }
+        .screen { display: none; flex-direction: column; align-items: center; width: 100%; max-width: 450px; }
+        .screen.active { display: flex; }
+        .card {
+            background: white;
+            border: 4px solid #2c3e50;
+            border-radius: 20px;
+            box-shadow: 8px 8px 0 #2c3e50;
+            padding: 20px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 { font-size: 1.8rem; margin-bottom: 15px; color: #2c3e50; }
+        h2 { font-size: 1.4rem; margin: 10px 0; color: #2c3e50; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 3px solid #2c3e50;
+            border-radius: 15px;
+            font-family: inherit;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: translate(2px, 2px); box-shadow: 3px 3px 0 #2c3e50; }
+        .btn-local { background: #FFB74D; color: white; box-shadow: 5px 5px 0 #E65100; }
+        .btn-online { background: #6C5CE7; color: white; box-shadow: 5px 5px 0 #4834d4; }        .btn-sec { background: #A5D6A7; color: #2c3e50; box-shadow: 5px 5px 0 #2c3e50; }
+        .rules {
+            background: #e8f4fd;
+            border: 2px dashed #2c3e50;
+            border-radius: 10px;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+        .rules b { color: #6C5CE7; }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 320px;
+            height: 320px;
+            border: 4px solid #2c3e50;
+            border-radius: 8px;
+            margin: 10px 0;
+            background: white;
+        }
+        .sq {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            position: relative;
+        }
+        .sq.w { background: #f0d9b5; }
+        .sq.b { background: #b58863; }
+        .sq.sel { background: #f1c40f !important; }
+        .sq.valid::after {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: rgba(46, 204, 113, 0.7);
+            border-radius: 50%;
+            border: 2px solid #2c3e50;
+        }
+        .sq.cap { background: rgba(231, 76, 60, 0.5) !important; }
+        .piece { font-size: 30px; line-height: 1; }
+        .piece.w { color: #fff; text-shadow: 0 0 2px #000, 1px 1px 2px #000; }
+        .piece.b { color: #000; }
+        #status {
+            font-size: 1.2rem;
+            font-weight: 600;
+            padding: 8px 16px;            background: #ffeaa7;
+            border: 2px solid #2c3e50;
+            border-radius: 20px;
+            margin: 10px 0;
+        }
+        .room-id {
+            background: #fff;
+            border: 2px dashed #2c3e50;
+            border-radius: 10px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 1.1rem;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(44,62,80,0.9);
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+        }
+        .modal.active { display: flex; }
+        .modal .card { max-width: 400px; }
+        .input-row { display: flex; gap: 8px; margin: 15px 0; }
+        .input-row input {
+            flex: 1;
+            padding: 10px;            border: 3px solid #2c3e50;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+        @media (max-width: 400px) {
+            #board { width: 280px; height: 280px; }
+            .sq { font-size: 24px; }
+            .piece { font-size: 26px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<!-- HOME SCREEN -->
+<div id="home" class="screen active">
+    <div class="card">
+        <h1>♟️ Twisted Chess</h1>
+        <div class="rules">
+            <b>🔄 The Twist:</b><br>
+            👑 King → moves like Queen (any distance)<br>
+            ♛ Queen → moves like King (1 square)<br>
+            🎯 Win by checkmating the King!
+        </div>
+        <button class="btn btn-local" onclick="goToGame()">👥 Local 1v1</button>
+        <button class="btn btn-online" onclick="goToLobby()">🌍 Online 1v1</button>
+        <button class="btn btn-sec" onclick="showRules()">📜 Rules</button>
+    </div>
+</div>
+
+<!-- LOBBY SCREEN -->
+<div id="lobby" class="screen">
+    <div class="card">
+        <h2>🌍 Online Play</h2>
+        <h3 style="margin:15px 0 5px">🏠 Create Room</h3>
+        <button class="btn btn-online" onclick="createRoom()">✨ Create Room</button>
+        <div id="created" style="display:none">
+            <p>Share this ID:</p>
+            <div class="room-id" id="roomId">Loading...</div>
+            <button class="btn" onclick="copyId()">📋 Copy ID</button>
+        </div>
+        <div style="margin:20px 0;border-bottom:2px solid #eee"></div>
+        <h3 style="margin:15px 0 5px">🔑 Join Room</h3>
+        <div class="input-row">
+            <input type="text" id="joinInput" placeholder="Paste Room ID">
+            <button class="btn btn-online" style="width:auto;padding:10px 15px" onclick="joinRoom()">Join</button>
+        </div>
+        <p id="joinStatus" style="font-size:0.9rem;color:#666"></p>        <button class="btn btn-sec" style="margin-top:20px" onclick="goHome()">← Back to Menu</button>
+    </div>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="game" class="screen">
+    <div class="card" style="padding:15px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <button class="btn btn-sec" style="width:auto;padding:5px 12px;font-size:0.9rem" onclick="goHome()">Exit</button>
+            <div id="status">White's Turn</div>
+            <button class="btn btn-sec" style="width:auto;padding:5px 12px;font-size:0.9rem" onclick="resetGame()">Reset</button>
+        </div>
+        <div id="board"></div>
+    </div>
+</div>
+
+<!-- RULES MODAL -->
+<div id="rulesModal" class="modal" onclick="hideRules()">
+    <div class="card" onclick="event.stopPropagation()">
+        <h2>🎮 Rules</h2>
+        <div style="text-align:left;font-size:0.95rem;line-height:1.5;margin:10px 0">
+            <p><b>🔄 Piece Changes:</b></p>
+            <ul style="padding-left:20px;margin:8px 0">
+                <li>👑 <b>King</b>: Moves like a Queen (any distance, any direction)</li>
+                <li>♛ <b>Queen</b>: Moves like a King (1 square only)</li>
+                <li>Other pieces: Normal chess moves</li>
+            </ul>
+            <p><b>🎯 Winning:</b> Checkmate the opponent's King!</p>
+        </div>
+        <button class="btn" onclick="hideRules()">Got it!</button>
+    </div>
+</div>
+
+<!-- GAME OVER MODAL -->
+<div id="gameOver" class="modal">
+    <div class="card">
+        <div style="font-size:3rem;margin:10px 0" id="winnerEmoji">🏆</div>
+        <h2 id="winnerText">Checkmate!</h2>
+        <p id="resultMsg" style="font-size:1.1rem;margin:10px 0">White wins!</p>
+        <div style="display:flex;gap:10px;margin-top:15px">
+            <button class="btn" onclick="playAgain()">Play Again</button>
+            <button class="btn btn-sec" onclick="goHome()">Menu</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===== SIMPLE STATE =====
+var board = [];
+var turn = 'w';var selected = null;
+var validMoves = [];
+var gameActive = false;
+var kingPos = {w:{r:7,c:4}, b:{r:0,c:4}};
+
+// ===== PIECES =====
+var PIECES = {
+    w: {k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},
+    b: {k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}
+};
+
+var START = [
+    ['br','bn','bb','bq','bk','bb','bn','br'],
+    ['bp','bp','bp','bp','bp','bp','bp','bp'],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['wp','wp','wp','wp','wp','wp','wp','wp'],
+    ['wr','wn','wb','wq','wk','wb','wn','wr']
+];
+
+// ===== NAVIGATION (SIMPLE & DIRECT) =====
+function goToGame() {
+    console.log('Going to game...');
+    hideAllScreens();
+    document.getElementById('game').classList.add('active');
+    resetGame();
+}
+
+function goToLobby() {
+    console.log('Going to lobby...');
+    hideAllScreens();
+    document.getElementById('lobby').classList.add('active');
+}
+
+function goHome() {
+    console.log('Going home...');
+    hideAllScreens();
+    document.getElementById('home').classList.add('active');
+}
+
+function hideAllScreens() {
+    var screens = document.querySelectorAll('.screen');
+    for (var i = 0; i < screens.length; i++) {
+        screens[i].classList.remove('active');
+    }
+}
+
+function showRules() {    document.getElementById('rulesModal').classList.add('active');
+}
+
+function hideRules() {
+    document.getElementById('rulesModal').classList.remove('active');
+}
+
+function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 2000);
+}
+
+// ===== GAME SETUP =====
+function createBoard() {
+    var boardEl = document.getElementById('board');
+    boardEl.innerHTML = '';
+    for (var r = 0; r < 8; r++) {
+        for (var c = 0; c < 8; c++) {
+            var sq = document.createElement('div');
+            sq.className = 'sq ' + ((r + c) % 2 ? 'b' : 'w');
+            sq.setAttribute('data-r', r);
+            sq.setAttribute('data-c', c);
+            sq.onclick = (function(row, col) {
+                return function() { clickSq(row, col); };
+            })(r, c);
+            boardEl.appendChild(sq);
+        }
+    }
+}
+
+function resetGame() {
+    // Deep copy start position
+    board = JSON.parse(JSON.stringify(START));
+    turn = 'w';
+    selected = null;
+    validMoves = [];
+    kingPos = {w:{r:7,c:4}, b:{r:0,c:4}};
+    gameActive = true;
+    render();
+    updateStatus();
+}
+
+// ===== GAME LOGIC =====
+function pieceAt(r, c) {
+    if (r < 0 || r >= 8 || c < 0 || c >= 8) return null;
+    return board[r][c];
+}
+function parsePiece(code) {
+    if (!code) return null;
+    return {color: code[0], type: code[1]};
+}
+
+function getMoves(r, c, code) {
+    var p = parsePiece(code);
+    if (!p) return [];
+    var moves = [];
+    var color = p.color;
+    var type = p.type;
+
+    function tryAdd(nr, nc) {
+        if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return false;
+        var t = pieceAt(nr, nc);
+        if (t === '' || (parsePiece(t) && parsePiece(t).color !== color)) {
+            moves.push({r: nr, c: nc});
+            return t !== '';
+        }
+        return true;
+    }
+
+    // KING = Queen moves (THE TWIST!)
+    if (type === 'k') {
+        var dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            var nr = r + dirs[i][0];
+            var nc = c + dirs[i][1];
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                var t = pieceAt(nr, nc);
+                if (t === '') {
+                    moves.push({r: nr, c: nc});
+                } else {
+                    if (parsePiece(t) && parsePiece(t).color !== color) {
+                        moves.push({r: nr, c: nc});
+                    }
+                    break;
+                }
+                nr += dirs[i][0];
+                nc += dirs[i][1];
+            }
+        }
+    }
+    // QUEEN = King moves (THE TWIST!)
+    else if (type === 'q') {
+        var dirs = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            tryAdd(r + dirs[i][0], c + dirs[i][1]);
+        }
+    }    // ROOK
+    else if (type === 'r') {
+        var dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            var nr = r + dirs[i][0];
+            var nc = c + dirs[i][1];
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                var t = pieceAt(nr, nc);
+                if (t === '') {
+                    moves.push({r: nr, c: nc});
+                } else {
+                    if (parsePiece(t) && parsePiece(t).color !== color) {
+                        moves.push({r: nr, c: nc});
+                    }
+                    break;
+                }
+                nr += dirs[i][0];
+                nc += dirs[i][1];
+            }
+        }
+    }
+    // BISHOP
+    else if (type === 'b') {
+        var dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (var i = 0; i < dirs.length; i++) {
+            var nr = r + dirs[i][0];
+            var nc = c + dirs[i][1];
+            while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                var t = pieceAt(nr, nc);
+                if (t === '') {
+                    moves.push({r: nr, c: nc});
+                } else {
+                    if (parsePiece(t) && parsePiece(t).color !== color) {
+                        moves.push({r: nr, c: nc});
+                    }
+                    break;
+                }
+                nr += dirs[i][0];
+                nc += dirs[i][1];
+            }
+        }
+    }
+    // KNIGHT
+    else if (type === 'n') {
+        var jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+        for (var i = 0; i < jumps.length; i++) {
+            tryAdd(r + jumps[i][0], c + jumps[i][1]);
+        }
+    }
+    // PAWN    else if (type === 'p') {
+        var dir = color === 'w' ? -1 : 1;
+        var start = color === 'w' ? 6 : 1;
+        if (pieceAt(r + dir, c) === '') {
+            moves.push({r: r + dir, c: c});
+            if (r === start && pieceAt(r + dir * 2, c) === '') {
+                moves.push({r: r + dir * 2, c: c});
+            }
+        }
+        if (c > 0) {
+            var t = pieceAt(r + dir, c - 1);
+            if (t && parsePiece(t) && parsePiece(t).color !== color) {
+                moves.push({r: r + dir, c: c - 1});
+            }
+        }
+        if (c < 7) {
+            var t = pieceAt(r + dir, c + 1);
+            if (t && parsePiece(t) && parsePiece(t).color !== color) {
+                moves.push({r: r + dir, c: c + 1});
+            }
+        }
+    }
+    return moves;
+}
+
+function inCheck(color) {
+    var kp = kingPos[color];
+    if (!kp) return false;
+    for (var r = 0; r < 8; r++) {
+        for (var c = 0; c < 8; c++) {
+            var pc = pieceAt(r, c);
+            if (pc) {
+                var p = parsePiece(pc);
+                if (p && p.color !== color) {
+                    var moves = getMoves(r, c, pc);
+                    for (var i = 0; i < moves.length; i++) {
+                        if (moves[i].r === kp.r && moves[i].c === kp.c) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function clickSq(r, c) {
+    if (!gameActive) return;
+    var pc = pieceAt(r, c);    var p = parsePiece(pc);
+
+    // Select own piece
+    if (p && p.color === turn) {
+        selected = {r: r, c: c};
+        validMoves = getMoves(r, c, pc);
+        render();
+        return;
+    }
+
+    // Move to valid square
+    if (selected) {
+        var found = false;
+        for (var i = 0; i < validMoves.length; i++) {
+            if (validMoves[i].r === r && validMoves[i].c === c) {
+                doMove(selected, validMoves[i]);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            selected = null;
+            validMoves = [];
+            render();
+        }
+    }
+}
+
+function doMove(from, to) {
+    var pc = board[from.r][from.c];
+    var cap = board[to.r][to.c];
+    var p = parsePiece(pc);
+
+    if (p && p.type === 'k') {
+        kingPos[p.color] = {r: to.r, c: to.c};
+    }
+
+    board[to.r][to.c] = pc;
+    board[from.r][from.c] = '';
+
+    // Pawn promotion
+    if (p && p.type === 'p' && (to.r === 0 || to.r === 7)) {
+        board[to.r][to.c] = p.color + 'q';
+    }
+
+    var opp = turn === 'w' ? 'b' : 'w';
+    var won = false;
+    var winner = null;
+
+    if (cap && parsePiece(cap) && parsePiece(cap).type === 'k') {        won = true;
+        winner = turn;
+    }
+
+    turn = opp;
+    selected = null;
+    validMoves = [];
+
+    render();
+    updateStatus();
+
+    if (won) endGame(winner);
+}
+
+function render() {
+    var squares = document.querySelectorAll('.sq');
+    for (var i = 0; i < squares.length; i++) {
+        var sq = squares[i];
+        var r = parseInt(sq.getAttribute('data-r'));
+        var c = parseInt(sq.getAttribute('data-c'));
+        var pc = pieceAt(r, c);
+        var p = parsePiece(pc);
+
+        sq.className = 'sq ' + ((r + c) % 2 ? 'b' : 'w');
+        sq.innerHTML = '';
+
+        if (selected && selected.r === r && selected.c === c) {
+            sq.classList.add('sel');
+        }
+
+        for (var j = 0; j < validMoves.length; j++) {
+            if (validMoves[j].r === r && validMoves[j].c === c) {
+                sq.classList.add(pieceAt(r, c) ? 'cap' : 'valid');
+                break;
+            }
+        }
+
+        if (pc && p) {
+            var el = document.createElement('span');
+            el.className = 'piece ' + (p.color === 'w' ? 'w' : 'b');
+            el.textContent = PIECES[p.color][p.type];
+            sq.appendChild(el);
+        }
+    }
+}
+
+function updateStatus() {
+    var status = document.getElementById('status');
+    var nm = turn === 'w' ? 'White' : 'Black';
+    var chk = inCheck(turn);    status.textContent = chk ? nm + ' in CHECK!' : nm + "'s Turn";
+}
+
+function endGame(winner) {
+    gameActive = false;
+    var nm = winner === 'w' ? 'White' : 'Black';
+    var em = winner === 'w' ? '♔' : '♚';
+
+    document.getElementById('winnerEmoji').textContent = em;
+    document.getElementById('winnerText').textContent = 'Checkmate!';
+    document.getElementById('resultMsg').textContent = nm + ' wins!';
+    document.getElementById('gameOver').classList.add('active');
+}
+
+function playAgain() {
+    document.getElementById('gameOver').classList.remove('active');
+    resetGame();
+}
+
+// ===== ONLINE (Optional - loads PeerJS only when needed) =====
+var peer = null;
+var conn = null;
+var myId = null;
+
+function loadPeerJS() {
+    return new Promise(function(resolve, reject) {
+        if (window.Peer) {
+            resolve();
+            return;
+        }
+        var script = document.createElement('script');
+        script.src = 'https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+function createRoom() {
+    loadPeerJS().then(function() {
+        myId = 'tc-' + Math.random().toString(36).slice(2, 10);
+        peer = new Peer(myId, {
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            secure: true
+        });
+
+        peer.on('open', function() {
+            document.getElementById('roomId').textContent = myId;            document.getElementById('created').style.display = 'block';
+            toast('Room created! Share ID');
+        });
+
+        peer.on('connection', function(c) {
+            conn = c;
+            conn.on('open', function() {
+                toast('Opponent connected!');
+                goToGame();
+            });
+        });
+    }).catch(function() {
+        toast('Failed to load online mode');
+    });
+}
+
+function joinRoom() {
+    var id = document.getElementById('joinInput').value.trim();
+    if (!id) {
+        toast('Enter Room ID');
+        return;
+    }
+
+    loadPeerJS().then(function() {
+        document.getElementById('joinStatus').textContent = 'Connecting...';
+        peer = new Peer({
+            host: '0.peerjs.com',
+            port: 443,
+            path: '/',
+            secure: true
+        });
+
+        peer.on('open', function() {
+            conn = peer.connect(id);
+            conn.on('open', function() {
+                document.getElementById('joinStatus').textContent = 'Connected!';
+                setTimeout(function() { goToGame(); }, 500);
+            });
+            conn.on('error', function() {
+                document.getElementById('joinStatus').textContent = 'Connection failed';
+            });
+        });
+    }).catch(function() {
+        toast('Failed to load online mode');
+    });
+}
+
+function copyId() {
+    if (!myId) return;
+    navigator.clipboard.writeText(myId).then(function() {        toast('ID copied!');
+    }).catch(function() {
+        toast('Copy failed');
+    });
+}
+
+// ===== INIT ON LOAD =====
+window.onload = function() {
+    console.log('Page loaded!');
+    createBoard();
+    console.log('Board created');
+    alert('Twisted Chess Loaded! Try clicking a button.');
+};
+</script>
+</body>
+</html>
